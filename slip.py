@@ -43,6 +43,7 @@ class Enlace:
     def __init__(self, linha_serial):
         self.linha_serial = linha_serial
         self.linha_serial.registrar_recebedor(self.__raw_recv)
+        self.resto = b''
 
     def registrar_recebedor(self, callback):
         self.callback = callback
@@ -51,6 +52,13 @@ class Enlace:
         # TODO: Preencha aqui com o código para enviar o datagrama pela linha
         # serial, fazendo corretamente a delimitação de quadros e o escape de
         # sequências especiais, de acordo com o protocolo CamadaEnlace (RFC 1055).
+
+        # Passo 2: adicionando os bytes de escape
+        datagrama = datagrama.replace(b'\xdb', b'\xdb\xdd')
+        datagrama = datagrama.replace(b'\xc0', b'\xdb\xdc')
+
+        # Passo 1: adicionando os bytes 0XC0
+        self.linha_serial.enviar(b'\xc0' + datagrama + b'\xc0')
         pass
 
     def __raw_recv(self, dados):
@@ -61,4 +69,27 @@ class Enlace:
         # vir quebrado de várias formas diferentes - por exemplo, podem vir
         # apenas pedaços de um quadro, ou um pedaço de quadro seguido de um
         # pedaço de outro, ou vários quadros de uma vez só.
+
+        # Passo 3: tratamento da entrada
+        dados = self.resto + dados
+        self.resto = b''
+        if not dados.endswith(b'\xc0'):
+            dados = dados.split(b'\xc0')
+            dados = list(filter((b'').__ne__, dados))
+            self.resto += dados.pop(-1)
+        else:
+            dados = dados.split(b'\xc0')
+            dados = list(filter((b'').__ne__, dados))
+		
+        # Passo 4: tratar '0XC0' e '0XDB'
+        for datagrama in dados:
+            datagrama = datagrama.replace(b'\xdb\xdc', b'\xc0')
+            datagrama = datagrama.replace(b'\xdb\xdd', b'\xdb')
+	
+	          # Passo 5: Tratar um datagrama mal formado
+            try:
+                self.callback(datagrama)
+            except:
+                import traceback
+                traceback.print_exc()
         pass
